@@ -43,6 +43,12 @@
   #go { background: var(--accent); color: #1a1208; }
   #mic[disabled] { opacity: 0.4; cursor: not-allowed; }
   #mic.listening { background: #7a2d2d; color: #fff; }
+  #mic-hint { display: none; align-items: center; justify-content: space-between; gap: 0.6rem; background: #2a2418; border: 1px solid var(--accent); color: var(--fg); border-radius: 12px; padding: 0.65rem 0.8rem; margin: 0 0 0.7rem; }
+  #mic-hint.show { display: flex; }
+  #mic-hint p { margin: 0; flex: 1; }
+  #mic-hint-ok { background: var(--accent); color: #1a1208; white-space: nowrap; }
+  #mic-retry { display: none; margin: 0 2px 0.7rem; background: var(--accent); color: #1a1208; font-size: 0.9rem; padding: 0.45rem 0.8rem; }
+  #mic-retry.show { display: inline-block; }
   .tabs { display: flex; gap: 0.3rem; margin-bottom: 0.7rem; }
   .tabs button { flex: 1; padding: 0.6rem 0.25rem; font-size: 0.88rem; background: var(--card); color: var(--muted); border: 1px solid var(--border); }
   .tabs button.active { color: var(--fg); border-color: var(--accent); background: #2a2418; }
@@ -87,7 +93,9 @@
     <button id="go" type="submit">Go</button>
     <button id="mic" type="button" title="Voice input">Mic</button>
   </form>
-  <p id="voice-status" class="status" style="margin:6px 2px 10px;min-height:0"></p>
+  <div id="mic-hint" role="status"><p>Your phone will ask to use the microphone. Tap Allow.</p><button type="button" id="mic-hint-ok">OK</button></div>
+  <p id="voice-status" class="status" style="margin:6px 2px 8px;min-height:0"></p>
+  <button type="button" id="mic-retry">Try again</button>
   <nav class="tabs">
     <button type="button" data-tab="main" class="active">Main</button>
     <button type="button" data-tab="buckets">Buckets</button>
@@ -816,7 +824,48 @@ const Garage = (() => {
     return state.moves.slice().sort(function (a, b) { return a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0; });
   }
 
-  return { KEY: KEY, LIMBO: LIMBO, LIMBO_NAME: LIMBO_NAME, HELP: HELP, CATEGORIES: CATEGORIES, empty: empty, load: load, save: save, run: run, today: today, setClock: setClock, formatTs: formatTs, parseBackup: parseBackup, migrate: migrate, bucketList: bucketList, recentMoves: recentMoves, itemsIn: itemsIn, normalize: normalize, guessCategory: guessCategory, allCategories: allCategories, categoryGroups: categoryGroups, categoryOf: categoryOf, limboStatus: limboStatus, reviewLimbo: reviewLimbo, where: where };
+  const MIC_HINT_KEY = 'garage_mic_hint_v1';
+  const MIC_HINT_TEXT = 'Your phone will ask to use the microphone. Tap Allow.';
+  const UNSUPPORTED_MIC = 'Voice input doesn\'t work in this browser. Try Chrome or Safari instead. You can also type the command.';
+
+  function defaultUA() {
+    try { return (typeof navigator !== 'undefined' && navigator.userAgent) || ''; } catch (e) { return ''; }
+  }
+  function isIOS(ua) {
+    ua = String(ua == null ? defaultUA() : ua);
+    return /iP(hone|ad|od)/i.test(ua);
+  }
+  function isAndroid(ua) {
+    ua = String(ua == null ? defaultUA() : ua);
+    return /Android/i.test(ua);
+  }
+  function shouldShowMicHint(shown, permissionState) {
+    if (shown) return false;
+    if (permissionState === 'granted' || permissionState === 'denied') return false;
+    return true;
+  }
+  function micBlockedSteps(ua) {
+    if (isIOS(ua)) return 'The microphone is blocked. Tap aA in the address bar, then Website Settings, then Microphone, then Allow, then reload.';
+    if (isAndroid(ua)) return 'The microphone is blocked. Tap the lock icon by the address, then Permissions, then Microphone, then Allow, then reload.';
+    return 'The microphone is blocked. Tap the lock or aA icon by the address, allow Microphone, then reload.';
+  }
+  function voiceErrorMessage(code, ua) {
+    var c = String(code || '');
+    if (c === 'not-allowed' || c === 'service-not-allowed' || c === 'NotAllowedError' || c === 'PermissionDeniedError' || c === 'SecurityError') {
+      return micBlockedSteps(ua);
+    }
+    if (c === 'no-speech') return "I didn't hear anything — tap the mic and try again.";
+    if (c === 'audio-capture' || c === 'NotFoundError' || c === 'DevicesNotFoundError') {
+      return "I couldn't find a microphone on this phone. Check that nothing else is using it, then try again.";
+    }
+    if (c === 'network') return 'Voice input needs an internet connection. Turn on Wi-Fi or data and try again.';
+    if (c === 'NotReadableError' || c === 'AbortError') {
+      return "I couldn't use the microphone. Close other apps that might be using it, then try again.";
+    }
+    return "Voice input didn't work. You can type the command instead.";
+  }
+
+  return { KEY: KEY, LIMBO: LIMBO, LIMBO_NAME: LIMBO_NAME, HELP: HELP, CATEGORIES: CATEGORIES, empty: empty, load: load, save: save, run: run, today: today, setClock: setClock, formatTs: formatTs, parseBackup: parseBackup, migrate: migrate, bucketList: bucketList, recentMoves: recentMoves, itemsIn: itemsIn, normalize: normalize, guessCategory: guessCategory, allCategories: allCategories, categoryGroups: categoryGroups, categoryOf: categoryOf, limboStatus: limboStatus, reviewLimbo: reviewLimbo, where: where, MIC_HINT_KEY: MIC_HINT_KEY, MIC_HINT_TEXT: MIC_HINT_TEXT, UNSUPPORTED_MIC: UNSUPPORTED_MIC, isIOS: isIOS, isAndroid: isAndroid, shouldShowMicHint: shouldShowMicHint, micBlockedSteps: micBlockedSteps, voiceErrorMessage: voiceErrorMessage };
 })();
 if (typeof globalThis !== 'undefined') globalThis.Garage = Garage;
 
@@ -1051,10 +1100,51 @@ if (typeof globalThis !== 'undefined') globalThis.Garage = Garage;
     setStatus('');
   });
 
-  function voiceStatus(m){ var el=document.getElementById('voice-status'); el.textContent=m||''; el.style.color=m&&/blocked|error|not work|No microphone|Could not|needs/.test(m)?'#e06c75':''; }
+  const micHint = $('mic-hint');
+  const micHintOk = $('mic-hint-ok');
+  const micRetry = $('mic-retry');
+  let micPerm = null;
+  try {
+    if (navigator.permissions && navigator.permissions.query) {
+      navigator.permissions.query({ name: 'microphone' }).then(function (r) {
+        micPerm = r && r.state;
+        if (r && r.addEventListener) r.addEventListener('change', function () { micPerm = r.state; });
+      }, function () { micPerm = null; });
+    }
+  } catch (e) { micPerm = null; }
+
+  function hintSeen() {
+    try { return localStorage.getItem(Garage.MIC_HINT_KEY) === '1'; } catch (e) { return false; }
+  }
+  function markHintSeen() {
+    try { localStorage.setItem(Garage.MIC_HINT_KEY, '1'); } catch (e) {}
+  }
+  function hideHint() { micHint.classList.remove('show'); }
+  function showHint() {
+    hideRetry();
+    voiceStatus('');
+    micHint.classList.add('show');
+  }
+  function hideRetry() { micRetry.classList.remove('show'); }
+  function showRetry() { micRetry.classList.add('show'); }
+  function voiceStatus(m, isErr) {
+    var el = document.getElementById('voice-status');
+    el.textContent = m || '';
+    if (m && isErr) el.classList.add('err');
+    else el.classList.remove('err');
+  }
+  function showVoiceError(msg, canRetry) {
+    voiceStatus(msg, true);
+    if (canRetry !== false) showRetry();
+    else hideRetry();
+  }
+
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) {
-    micBtn.addEventListener('click', function () { voiceStatus('Voice input does not work in this browser. Open the page in Chrome, or type the command.'); });
+    micBtn.addEventListener('click', function () {
+      hideHint();
+      showVoiceError(Garage.UNSUPPORTED_MIC, false);
+    });
     micBtn.style.opacity = '0.4';
     micBtn.title = 'Voice input is not supported in this browser';
   } else {
@@ -1066,8 +1156,7 @@ if (typeof globalThis !== 'undefined') globalThis.Garage = Garage;
       micBtn.textContent = 'Mic';
       if (rec) try { rec.stop(); } catch (e) {}
     }
-    micBtn.addEventListener('click', function () {
-      if (listening) { stop(); return; }
+    function beginRecognition() {
       rec = new SR();
       rec.lang = 'en-US';
       rec.interimResults = false;
@@ -1075,31 +1164,68 @@ if (typeof globalThis !== 'undefined') globalThis.Garage = Garage;
       rec.onresult = function (e) {
         const text = e.results && e.results[0] && e.results[0][0] ? e.results[0][0].transcript : '';
         stop();
+        hideRetry();
         voiceStatus('');
         if (text) {
           cmd.value = text;
           runCommand(text);
+        } else {
+          showVoiceError("I didn't hear anything — tap the mic and try again.");
         }
       };
       rec.onerror = function (e) {
         stop();
-        var code = e && e.error;
-        var msg = {
-          'not-allowed': 'Microphone is blocked. Tap the icon left of the web address, choose Permissions, and allow Microphone, then try again.',
-          'service-not-allowed': 'Voice input is turned off in this browser. Open the page in Chrome and allow the microphone.',
-          'no-speech': 'Did not hear anything. Tap Mic and start talking right away.',
-          'audio-capture': 'No microphone found. Check that another app is not using it.',
-          'network': 'Voice input needs an internet connection. Try again with Wi-Fi or data on.'
-        }[code] || ('Voice input error: ' + (code || 'unknown') + '. You can type the command instead.');
-        voiceStatus(msg);
+        showVoiceError(Garage.voiceErrorMessage(e && e.error, navigator.userAgent));
       };
-      rec.onstart = function () { voiceStatus('Listening... say something like "put the drill in bucket 6" or "where is the drill".'); };
-      rec.onend = function () { if (listening) { stop(); voiceStatus('Did not catch that. Tap Mic and try again.'); } };
+      rec.onstart = function () {
+        hideRetry();
+        voiceStatus('Listening... say something like "put the drill in bucket 6" or "where is the drill".');
+      };
+      rec.onend = function () {
+        if (listening) {
+          stop();
+          showVoiceError("I didn't hear anything — tap the mic and try again.");
+        }
+      };
       listening = true;
       micBtn.classList.add('listening');
       micBtn.textContent = 'Stop';
-      try { rec.start(); } catch (e) { stop(); voiceStatus('Could not start the microphone: ' + e.message); }
+      try { rec.start(); } catch (e) { stop(); showVoiceError("I couldn't start the microphone. Tap Try again, or type the command instead."); }
+    }
+    function startWithPermission() {
+      hideHint();
+      hideRetry();
+      voiceStatus('Asking to use the microphone...');
+      var gum = navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
+      if (!gum) {
+        beginRecognition();
+        return;
+      }
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+        if (stream && stream.getTracks) {
+          stream.getTracks().forEach(function (t) { try { t.stop(); } catch (e) {} });
+        }
+        beginRecognition();
+      }).catch(function (err) {
+        var code = err && (err.name || err.message);
+        showVoiceError(Garage.voiceErrorMessage(code, navigator.userAgent));
+      });
+    }
+    function onMicTap() {
+      if (listening) { stop(); voiceStatus(''); hideRetry(); return; }
+      if (Garage.shouldShowMicHint(hintSeen(), micPerm)) {
+        showHint();
+        return;
+      }
+      startWithPermission();
+    }
+    micBtn.addEventListener('click', onMicTap);
+    micHintOk.addEventListener('click', function () {
+      markHintSeen();
+      hideHint();
+      startWithPermission();
     });
+    micRetry.addEventListener('click', onMicTap);
   }
 
   render();
