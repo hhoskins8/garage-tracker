@@ -49,6 +49,7 @@
   #mic-hint-ok { background: var(--accent); color: #1a1208; white-space: nowrap; }
   #mic-retry { display: none; margin: 0 2px 0.7rem; background: var(--accent); color: #1a1208; font-size: 0.9rem; padding: 0.45rem 0.8rem; }
   #mic-retry.show { display: inline-block; }
+  #voice-status { white-space: pre-wrap; }
   .tabs { display: flex; gap: 0.3rem; margin-bottom: 0.7rem; }
   .tabs button { flex: 1; padding: 0.6rem 0.25rem; font-size: 0.88rem; background: var(--card); color: var(--muted); border: 1px solid var(--border); }
   .tabs button.active { color: var(--fg); border-color: var(--accent); background: #2a2418; }
@@ -846,8 +847,7 @@ const Garage = (() => {
   }
   function micBlockedSteps(ua) {
     if (isIOS(ua)) return 'The microphone is blocked. Tap aA in the address bar, then Website Settings, then Microphone, then Allow, then reload.';
-    if (isAndroid(ua)) return 'The microphone is blocked. Tap the lock icon by the address, then Permissions, then Microphone, then Allow, then reload.';
-    return 'The microphone is blocked. Tap the lock or aA icon by the address, allow Microphone, then reload.';
+    return 'Microphone is blocked.\n\n1. Tap the little sliders icon at the left of the web address, then Permissions, then Microphone, then Allow, then reload.\n\n2. Don\'t see it? Tap ⋮ (top right), then Settings, then Site settings, then Microphone, find hhoskins8.github.io, and set it to Allow.';
   }
   function voiceErrorMessage(code, ua) {
     var c = String(code || '');
