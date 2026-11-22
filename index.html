@@ -1,0 +1,1109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#10141c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Garage Tracker">
+<title>Garage Tracker</title>
+<style>
+  :root {
+    --bg: #10141c;
+    --card: #1a2130;
+    --fg: #e8edf4;
+    --muted: #8b95a5;
+    --accent: #f0a14a;
+    --good: #3d9a7a;
+    --border: #2a3140;
+    --btn: #243044;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); }
+  body {
+    font: 16px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    min-height: 100dvh;
+    max-width: 42rem;
+    margin: 0 auto;
+    padding: 0.75rem 0.9rem 1.5rem;
+  }
+  h1 { font-size: 1.25rem; margin: 0.2rem 0 0.15rem; font-weight: 700; letter-spacing: -0.02em; }
+  .sub { color: var(--muted); font-size: 0.8rem; margin: 0 0 0.8rem; }
+  form.bar { display: flex; gap: 0.4rem; margin-bottom: 0.7rem; }
+  #cmd {
+    flex: 1; min-width: 0; font-size: 16px; padding: 0.7rem 0.75rem;
+    border: 1px solid var(--border); border-radius: 10px;
+    background: var(--card); color: var(--fg); outline: none;
+  }
+  #cmd:focus { border-color: var(--accent); }
+  button {
+    font: inherit; font-weight: 600; border: 0; border-radius: 10px;
+    padding: 0.7rem 0.85rem; background: var(--btn); color: var(--fg); cursor: pointer;
+  }
+  #go { background: var(--accent); color: #1a1208; }
+  #mic[disabled] { opacity: 0.4; cursor: not-allowed; }
+  #mic.listening { background: #7a2d2d; color: #fff; }
+  .tabs { display: flex; gap: 0.3rem; margin-bottom: 0.7rem; }
+  .tabs button { flex: 1; padding: 0.6rem 0.25rem; font-size: 0.88rem; background: var(--card); color: var(--muted); border: 1px solid var(--border); }
+  .tabs button.active { color: var(--fg); border-color: var(--accent); background: #2a2418; }
+  #panel {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 0.85rem 0.9rem; min-height: 12rem; white-space: pre-wrap; word-break: break-word;
+  }
+  #panel .muted { color: var(--muted); }
+  #panel .cmd { color: var(--accent); font-weight: 600; }
+  #panel .entry + .entry { margin-top: 0.85rem; padding-top: 0.85rem; border-top: 1px solid var(--border); }
+  .row { display: flex; justify-content: space-between; gap: 0.5rem; padding: 0.55rem 0; border-bottom: 1px solid var(--border); }
+  .row:last-child { border-bottom: 0; }
+  .count { color: var(--muted); font-size: 0.85rem; }
+  .tools { display: flex; gap: 0.4rem; margin-top: 0.8rem; flex-wrap: wrap; }
+  .tools button { background: transparent; color: var(--muted); border: 1px solid var(--border); font-size: 0.85rem; padding: 0.45rem 0.7rem; }
+  #backup { display: none; margin-top: 0.7rem; }
+  #backup.open { display: block; }
+  #backup textarea {
+    width: 100%; min-height: 8rem; font: 13px/1.4 ui-monospace, Menlo, monospace;
+    background: #0c1016; color: var(--fg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 0.6rem; resize: vertical;
+  }
+  #backup .tools { margin-top: 0.45rem; }
+  .status { color: var(--good); font-size: 0.85rem; min-height: 1.2em; margin-top: 0.35rem; }
+  .status.err { color: #e06c75; }
+  #limbo-banner { display: none; align-items: center; justify-content: space-between; gap: 0.6rem; background: #3a2a10; border: 1px solid var(--accent); color: var(--fg); border-radius: 12px; padding: 0.65rem 0.8rem; margin: 0.2rem 0 0.8rem; }
+  #limbo-banner.show { display: flex; }
+  #limbo-banner b { color: var(--accent); }
+  #limbo-banner .small { color: var(--muted); font-size: 0.8rem; }
+  #limbo-done { background: var(--accent); color: #1a1208; white-space: nowrap; }
+  .cat-head { font-weight: 700; color: var(--accent); margin-top: 0.7rem; }
+  .cat-head:first-child { margin-top: 0; }
+  .row.limbo div:first-child { color: var(--accent); font-weight: 600; }
+</style>
+</head>
+<body>
+  <div id="limbo-banner" role="status"><div><b>Time to review The Limbo Bin</b><br><span class="small" id="limbo-info"></span></div><button type="button" id="limbo-done">Reviewed</button></div>
+  <h1>Garage Tracker</h1>
+  <p class="sub">Talk to it like a person: “where’s the drill?” Data stays on this phone. Use Export to share a backup.</p>
+  <form class="bar" id="form" action="#">
+    <input id="cmd" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="try: where's the drill?" enterkeyhint="go">
+    <button id="go" type="submit">Go</button>
+    <button id="mic" type="button" title="Voice input">Mic</button>
+  </form>
+  <p id="voice-status" class="status" style="margin:6px 2px 10px;min-height:0"></p>
+  <nav class="tabs">
+    <button type="button" data-tab="main" class="active">Main</button>
+    <button type="button" data-tab="buckets">Buckets</button>
+    <button type="button" data-tab="categories">Categories</button>
+    <button type="button" data-tab="history">History</button>
+  </nav>
+  <div id="panel"></div>
+  <div class="tools">
+    <button type="button" id="btn-export">Export</button>
+    <button type="button" id="btn-import">Import</button>
+  </div>
+  <div id="backup">
+    <textarea id="backup-json" aria-label="Backup JSON"></textarea>
+    <div class="tools">
+      <button type="button" id="btn-copy">Copy JSON</button>
+      <button type="button" id="btn-apply">Paste &amp; import</button>
+      <button type="button" id="btn-close">Close</button>
+    </div>
+    <div class="status" id="backup-status"></div>
+  </div>
+<script>
+const Garage = (() => {
+  const KEY = 'garage_v1';
+  const LIMBO = 'limbo';
+  const LIMBO_NAME = 'The Limbo Bin';
+  const LIMBO_DAYS = 30;
+  const HELP = [
+    'Things you can say (or type):',
+    '',
+    'Put things away',
+    '• drill 6  ·  put the drill in bucket 6  ·  move drill to bucket six',
+    '• drill limbo  ·  put the drill in limbo  (The Limbo Bin holds stuff waiting to be put away)',
+    '',
+    'Find things',
+    "• where's the drill  ·  find drill  ·  where did I put the drill  ·  or just say drill",
+    '',
+    'Categories',
+    '• show power tools  ·  what tools do we have  ·  list nails',
+    '• drill is a power tool  ·  set drill category to hand tools',
+    '',
+    'Buckets',
+    "• what's in bucket 6  ·  what's in limbo  ·  list (everything)",
+    '• review 3  ·  review limbo  ·  next (what should I review next)',
+    '• drill history  ·  history of drill'
+  ].join('\n');
+  const HINT = 'Hmm, I didn’t catch that. Try “drill 6”, “where’s the drill”, “show power tools”, or “what’s in limbo”. Say help for more.';
+
+  const CATEGORIES = [
+    ['Power Tools', ['drill', 'cordless drill', 'impact driver', 'driver', 'saw', 'circular saw', 'miter saw', 'table saw', 'jigsaw', 'reciprocating saw', 'sawzall', 'chainsaw', 'sander', 'grinder', 'angle grinder', 'router', 'nailer', 'nail gun', 'brad nailer', 'stapler', 'staple gun', 'heat gun', 'rotary tool', 'dremel', 'planer', 'oscillating tool', 'multi tool', 'multitool', 'battery', 'charger', 'compressor', 'air compressor', 'shop vac', 'drill bit', 'saw blade', 'blade']],
+    ['Hand Tools', ['hammer', 'mallet', 'wrench', 'socket', 'ratchet', 'screwdriver', 'plier', 'pliers', 'level', 'tape measure', 'measuring tape', 'tape', 'chisel', 'clamp', 'vise', 'utility knife', 'box cutter', 'knife', 'crowbar', 'pry bar', 'hacksaw', 'handsaw', 'hand saw', 'square', 'file', 'allen key', 'hex key', 'toolbox', 'tool box', 'tool', 'tools', 'stud finder', 'caulk gun', 'putty knife', 'snips']],
+    ['Fasteners', ['nail', 'screw', 'bolt', 'nut', 'washer', 'anchor', 'rivet', 'staple', 'hook', 'zip tie', 'fastener', 'bracket', 'hinge', 'wall anchor', 'drywall anchor']],
+    ['Electrical', ['wire', 'wiring', 'cord', 'extension cord', 'outlet', 'switch', 'breaker', 'fuse', 'light bulb', 'bulb', 'lightbulb', 'electrical tape', 'wire nut', 'multimeter', 'power strip', 'flashlight', 'headlamp', 'lamp', 'cable', 'conduit', 'surge protector']],
+    ['Plumbing', ['pipe', 'pvc', 'plunger', 'pipe wrench', 'fitting', 'faucet', 'valve', 'hose clamp', 'plumber', 'drain', 'snake', 'teflon tape', 'pex', 'coupling', 'toilet', 'sink']],
+    ['Paint', ['paint', 'primer', 'brush', 'paint brush', 'paintbrush', 'roller', 'paint roller', 'tray', 'paint tray', 'drop cloth', 'painters tape', 'spray paint', 'stain', 'varnish', 'caulk', 'spackle', 'thinner', 'putty', 'sandpaper']],
+    ['Automotive', ['car', 'oil', 'motor oil', 'jack', 'jack stand', 'jumper cable', 'jumper cables', 'tire', 'tire gauge', 'antifreeze', 'coolant', 'wiper', 'wipers', 'funnel', 'car wax', 'battery charger', 'tow strap', 'creeper', 'spark plug', 'filter', 'oil filter', 'windshield']],
+    ['Garden/Yard', ['shovel', 'rake', 'hoe', 'trowel', 'hose', 'garden hose', 'sprinkler', 'mower', 'lawn mower', 'trimmer', 'weed eater', 'weed whacker', 'edger', 'leaf blower', 'blower', 'pruner', 'pruners', 'shears', 'loppers', 'fertilizer', 'seed', 'seeds', 'pot', 'planter', 'soil', 'mulch', 'wheelbarrow', 'gloves', 'garden', 'yard', 'lawn', 'snow shovel', 'ice melt']],
+    ['Sports/Outdoor', ['ball', 'basketball', 'football', 'soccer ball', 'baseball', 'bat', 'glove', 'mitt', 'bike', 'bicycle', 'helmet', 'skateboard', 'scooter', 'skis', 'ski', 'snowboard', 'sled', 'racket', 'golf', 'golf clubs', 'frisbee', 'pump', 'ball pump', 'fishing', 'fishing pole', 'rod', 'tackle', 'kayak', 'paddle', 'life jacket', 'roller skates', 'skates', 'volleyball', 'net', 'pickleball']],
+    ['Holiday/Decor', ['christmas', 'xmas', 'christmas lights', 'lights', 'ornament', 'ornaments', 'wreath', 'tree', 'christmas tree', 'halloween', 'pumpkin', 'easter', 'decoration', 'decorations', 'decor', 'garland', 'tinsel', 'inflatable', 'thanksgiving', 'fourth of july', 'flag', 'stocking', 'nativity', 'holiday']],
+    ['Camping', ['tent', 'sleeping bag', 'sleeping pad', 'camp stove', 'stove', 'lantern', 'cooler', 'camp chair', 'camping chair', 'tarp', 'backpack', 'hammock', 'firewood', 'propane', 'dutch oven', 'mess kit', 'water jug', 'camping', 'air mattress', 'bear spray']],
+    ['Cleaning', ['broom', 'mop', 'bucket', 'vacuum', 'cleaner', 'bleach', 'soap', 'detergent', 'sponge', 'rag', 'rags', 'towel', 'towels', 'duster', 'dustpan', 'scrub brush', 'trash bag', 'trash bags', 'garbage bag', 'squeegee', 'pressure washer', 'wipes', 'paper towel', 'paper towels']],
+    ['Craft', ['stained glass', 'glass', 'glass cutter', 'cutter', 'glass grinder', 'came', 'lead came', 'copper foil', 'foil', 'solder', 'flux', 'soldering iron', 'kiln', 'grozing pliers', 'running pliers', 'patina', 'glue', 'glue gun', 'hot glue', 'yarn', 'fabric', 'sewing', 'sewing machine', 'thread', 'beads', 'ribbon', 'scissors', 'craft', 'crafts', 'scrapbook', 'cricut', 'vinyl', 'canvas', 'markers', 'paintbrushes', 'easel']],
+    ['Misc', []]
+  ];
+  const BUILTIN = CATEGORIES.map(function (c) { return c[0]; });
+
+  const FILLER = { the: 1, a: 1, an: 1, my: 1, our: 1, your: 1, at: 1, please: 1, hey: 1, is: 1, go: 1, um: 1, uh: 1, like: 1, some: 1, any: 1, me: 1, that: 1, this: 1, those: 1, these: 1, all: 1, ok: 1, okay: 1 };
+  const ONES = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19 };
+  const TENS = { twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 };
+
+  let clock = function () { return new Date(); };
+  function setClock(fn) { clock = typeof fn === 'function' ? fn : function () { return new Date(); }; }
+  function now() { return clock(); }
+
+  function ymd(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function today() { return ymd(now()); }
+  function daysSince(dateStr) {
+    if (!dateStr) return Infinity;
+    const p = String(dateStr).slice(0, 10).split('-').map(Number);
+    if (p.length < 3 || p.some(isNaN)) return Infinity;
+    const t = today().split('-').map(Number);
+    return Math.round((Date.UTC(t[0], t[1] - 1, t[2]) - Date.UTC(p[0], p[1] - 1, p[2])) / 86400000);
+  }
+
+  function formatTs(ts) {
+    const d = new Date(ts);
+    if (isNaN(d)) return String(ts);
+    return d.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  }
+
+  function isObj(v) { return v && typeof v === 'object' && !Array.isArray(v); }
+
+  function empty() {
+    return { items: {}, buckets: {}, moves: [], reviews: [], categories: {}, customCategories: [], limbo: { lastReviewed: today() } };
+  }
+
+  function clone(state) { return JSON.parse(JSON.stringify(state)); }
+
+  // Bring any saved shape up to date without dropping anything.
+  function migrate(s) {
+    if (!isObj(s)) return empty();
+    const out = {};
+    for (const k in s) out[k] = s[k];
+    out.items = isObj(s.items) ? s.items : {};
+    for (const k in out.items) out.items[k] = String(out.items[k]);
+    out.buckets = isObj(s.buckets) ? s.buckets : {};
+    out.moves = Array.isArray(s.moves) ? s.moves : [];
+    out.reviews = Array.isArray(s.reviews) ? s.reviews : [];
+    out.categories = isObj(s.categories) ? s.categories : {};
+    out.customCategories = Array.isArray(s.customCategories) ? s.customCategories.filter(function (c) { return typeof c === 'string' && c; }) : [];
+    for (const k in out.items) if (!out.categories[k]) out.categories[k] = guessCategory(k);
+    if (!isObj(s.limbo)) {
+      const hasLimbo = Object.keys(out.items).some(function (k) { return out.items[k] === LIMBO; });
+      out.limbo = { lastReviewed: hasLimbo ? null : today() };
+    } else {
+      out.limbo = s.limbo;
+      if (!('lastReviewed' in out.limbo)) out.limbo.lastReviewed = null;
+    }
+    if (out.buckets[LIMBO]) out.buckets[LIMBO].retired = false;
+    return out;
+  }
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (!raw) return empty();
+      return migrate(JSON.parse(raw));
+    } catch (e) {
+      return empty();
+    }
+  }
+
+  function save(state) { localStorage.setItem(KEY, JSON.stringify(state)); }
+
+  // ---------- text helpers ----------
+  function numberWords(tokens) {
+    const out = [];
+    for (let i = 0; i < tokens.length; i++) {
+      const t = tokens[i];
+      if (TENS[t] !== undefined) {
+        const nx = tokens[i + 1];
+        if (nx && ONES[nx] !== undefined && ONES[nx] > 0 && ONES[nx] < 10) { out.push(String(TENS[t] + ONES[nx])); i++; }
+        else out.push(String(TENS[t]));
+      } else if (ONES[t] !== undefined) out.push(String(ONES[t]));
+      else out.push(t);
+    }
+    return out;
+  }
+
+  function normalize(raw) {
+    let s = String(raw || '').toLowerCase();
+    s = s.replace(/[\u2018\u2019\u201B\u0060\u00B4']/g, '');
+    s = s.replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!s) return '';
+    let tokens = numberWords(s.split(' '));
+    s = tokens.join(' ');
+    // "bucket two/to/too/for" spoken at the end means the number
+    s = s.replace(/\b(bucket|bin|box|number|in|into)\s+(to|too)$/, '$1 2').replace(/\b(bucket|bin|box|number)\s+(for|fore)$/, '$1 4');
+    s = s.replace(/\b(\d+)(st|nd|rd|th)\b/g, '$1');
+    s = s.replace(/\b(?:the\s+)?limbo\s+(?:bin|bucket|box)\b/g, 'limbo').replace(/\bthe limbo\b/g, 'limbo').replace(/\blimbo\s+bin\b/g, 'limbo');
+    // polite lead-ins and sign-offs
+    let prev;
+    do {
+      prev = s;
+      s = s.replace(/^(hey|hi|ok|okay|um|uh|so|please|alright|well|now|and|garage|garage tracker|can you|could you|would you|will you|can we|can i|i want to|i wanna|i need to|lets|let us|go ahead and|tell me|show me where)\s+/, '');
+      s = s.replace(/\s+(please|thanks|thank you|now|for me|real quick|ok|okay)$/, '');
+    } while (s !== prev && s);
+    return s.trim();
+  }
+
+  function clean(phrase) {
+    const words = String(phrase || '').split(' ').filter(Boolean);
+    const kept = words.filter(function (w) { return !FILLER[w]; });
+    let out = (kept.length ? kept : words).join(' ');
+    out = out.replace(/\s+(at|located|kept|hiding|go|goes|is|are|now|again|stored)$/, '').trim();
+    return out;
+  }
+
+  function singular(w) {
+    if (w.length <= 3) return w;
+    if (/ies$/.test(w)) return w.slice(0, -3) + 'y';
+    if (/(sses|shes|ches|xes|zes)$/.test(w)) return w.slice(0, -2);
+    if (/ss$/.test(w)) return w;
+    if (/s$/.test(w)) return w.slice(0, -1);
+    return w;
+  }
+  function words(s) { return normalize(s).split(' ').filter(Boolean).map(singular); }
+
+  function lev(a, b) {
+    if (a === b) return 0;
+    const m = a.length, n = b.length;
+    if (Math.abs(m - n) > 2) return 3;
+    let prev = [];
+    for (let j = 0; j <= n; j++) prev[j] = j;
+    for (let i = 1; i <= m; i++) {
+      const cur = [i];
+      for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = cur;
+    }
+    return prev[n];
+  }
+  function wordLike(q, w) {
+    if (q === w) return true;
+    if (q.length > 4 && w.length > 4 && lev(q, w) <= 2) return true;
+    return false;
+  }
+  function containsSeq(hay, needle) {
+    if (!needle.length || needle.length > hay.length) return false;
+    for (let i = 0; i + needle.length <= hay.length; i++) {
+      let ok = true;
+      for (let j = 0; j < needle.length; j++) if (hay[i + j] !== needle[j]) { ok = false; break; }
+      if (ok) return true;
+    }
+    return false;
+  }
+
+  // 0 = no match, 1 = fuzzy, 2 = partial, 3 = exact
+  function matchScore(query, name) {
+    const qw = words(query).filter(function (w) { return !FILLER[w]; });
+    const nw = words(name);
+    if (!qw.length || !nw.length) return 0;
+    const qs = qw.join(' '), ns = nw.join(' ');
+    if (qs === ns) return 3;
+    if (containsSeq(nw, qw) || containsSeq(qw, nw)) return 2;
+    if (qs.length >= 3 && ns.indexOf(qs) !== -1) return 2;
+    if (qw.every(function (q) { return nw.some(function (w) { return wordLike(q, w) || (q.length >= 4 && w.indexOf(q) === 0); }); })) return 1;
+    return 0;
+  }
+
+  function title(s) {
+    return String(s).split(' ').filter(Boolean).map(function (w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
+  }
+
+  // Recover the user's own capitalisation for a new name when possible.
+  function displayName(lowerName, raw) {
+    const r = String(raw || '').replace(/[\u2018\u2019\u201B]/g, "'");
+    const idx = r.toLowerCase().indexOf(lowerName);
+    if (idx !== -1) return r.slice(idx, idx + lowerName.length);
+    return lowerName;
+  }
+
+  // ---------- categories ----------
+  function guessCategory(name) {
+    const nw = words(name);
+    let best = null, bestLen = 0, bestIdx = 99;
+    for (let i = 0; i < CATEGORIES.length; i++) {
+      const kws = CATEGORIES[i][1];
+      for (let j = 0; j < kws.length; j++) {
+        const kw = kws[j].split(' ').map(singular);
+        if (containsSeq(nw, kw) && (kw.length > bestLen || (kw.length === bestLen && kw.join(' ').length > (best ? best.len : 0)))) {
+          best = { cat: CATEGORIES[i][0], len: kw.join(' ').length }; bestLen = kw.length; bestIdx = i;
+        }
+      }
+    }
+    return best ? best.cat : 'Misc';
+  }
+
+  function allCategories(state) {
+    const set = {}, out = [];
+    BUILTIN.forEach(function (c) { if (c !== 'Misc') { set[c.toLowerCase()] = 1; out.push(c); } });
+    const extra = [];
+    (state.customCategories || []).forEach(function (c) { if (!set[c.toLowerCase()]) { set[c.toLowerCase()] = 1; extra.push(c); } });
+    for (const k in state.categories || {}) { const c = state.categories[k]; if (c && !set[c.toLowerCase()] && c !== 'Misc') { set[c.toLowerCase()] = 1; extra.push(c); } }
+    extra.sort(function (a, b) { return a.localeCompare(b); });
+    return out.concat(extra, ['Misc']);
+  }
+
+  function catWords(c) { return c.toLowerCase().split(/[\s\/&]+/).filter(Boolean).map(singular); }
+
+  function catNameMatch(query, cat) {
+    const qw = words(query).filter(function (w) { return !FILLER[w]; });
+    if (!qw.length) return 0;
+    const cw = catWords(cat);
+    if (qw.join(' ') === cw.join(' ')) return 3;
+    const ok = qw.every(function (q) {
+      return cw.some(function (w) { return q === w || wordLike(q, w) || (q.length >= 4 && w.indexOf(q) === 0) || (w.length >= 4 && q.indexOf(w) === 0); });
+    });
+    return ok ? 2 : 0;
+  }
+
+  function catKeywordMatch(query, cat) {
+    const entry = CATEGORIES.filter(function (c) { return c[0] === cat; })[0];
+    if (!entry) return false;
+    const qs = words(query).filter(function (w) { return !FILLER[w]; }).join(' ');
+    return entry[1].some(function (k) { return k.split(' ').map(singular).join(' ') === qs; });
+  }
+
+  function categoriesFor(query, state, allowKeywords) {
+    const cats = allCategories(state);
+    let hits = cats.filter(function (c) { return catNameMatch(query, c) === 3; });
+    if (!hits.length) hits = cats.filter(function (c) { return catNameMatch(query, c) > 0; });
+    if (!hits.length && allowKeywords) hits = cats.filter(function (c) { return catKeywordMatch(query, c); });
+    return hits;
+  }
+
+  function categoryOf(state, name) { return (state.categories && state.categories[name]) || guessCategory(name); }
+
+  function itemsInCategory(state, cat) {
+    return Object.keys(state.items).filter(function (k) { return categoryOf(state, k).toLowerCase() === cat.toLowerCase(); }).sort(function (a, b) { return a.localeCompare(b); });
+  }
+
+  function resolveCategory(phrase, state, itemName) {
+    const p = clean(phrase).replace(/^(category|kind of|type of|sort of)\s+/, '').replace(/\s+(category|stuff|things|thing|item|items)$/, '').trim();
+    if (!p) return null;
+    const cats = allCategories(state);
+    const exact = cats.filter(function (c) { return catNameMatch(p, c) === 3; });
+    if (exact.length) return { cat: exact[0], created: false };
+    const part = cats.filter(function (c) { return catNameMatch(p, c) === 2; });
+    if (part.length === 1) return { cat: part[0], created: false };
+    if (part.length > 1 && itemName) {
+      const g = guessCategory(itemName);
+      if (part.indexOf(g) !== -1) return { cat: g, created: false };
+    }
+    if (part.length > 1) return { cat: part[0], created: false };
+    return { cat: title(p), created: true };
+  }
+
+  // ---------- core data ops ----------
+  function existingName(items, name) {
+    const lower = String(name).toLowerCase();
+    const keys = Object.keys(items);
+    for (let i = 0; i < keys.length; i++) if (keys[i].toLowerCase() === lower) return keys[i];
+    const sw = words(name).join(' ');
+    for (let i = 0; i < keys.length; i++) if (words(keys[i]).join(' ') === sw) return keys[i];
+    return null;
+  }
+
+  function where(id) { return String(id) === LIMBO ? LIMBO_NAME : 'bucket ' + id; }
+
+  function itemsIn(state, n) {
+    const id = String(n);
+    return Object.keys(state.items).filter(function (k) { return String(state.items[k]) === id; }).sort(function (a, b) { return a.localeCompare(b); });
+  }
+
+  function ensureBucket(s, id) {
+    if (!s.buckets[id]) s.buckets[id] = { reviewed: null, retired: false };
+    return s.buckets[id];
+  }
+
+  function moveItem(name, bucket, state, raw) {
+    const s = clone(state);
+    name = String(name).trim();
+    const key = existingName(s.items, name) || displayName(name, raw);
+    const from = Object.prototype.hasOwnProperty.call(s.items, key) ? String(s.items[key]) : null;
+    const to = String(bucket);
+    if (from === to) return { message: key + ' is already in ' + where(to) + '.', state: s };
+    s.items[key] = to;
+    if (to !== LIMBO) ensureBucket(s, to).retired = false;
+    let catNote = '';
+    if (!s.categories[key]) { s.categories[key] = guessCategory(key); catNote = ' Category: ' + s.categories[key] + '.'; }
+    s.moves.push({ item: key, from: from, to: to, ts: now().toISOString() });
+    if (from) {
+      let msg = 'Moved ' + key + ' from ' + where(from) + ' to ' + where(to) + '.';
+      if (from !== LIMBO && itemsIn(s, from).length === 0) {
+        ensureBucket(s, from).retired = true;
+        msg += ' Bucket ' + from + ' is now empty and was retired.';
+      }
+      return { message: msg, state: s };
+    }
+    if (to === LIMBO) return { message: 'Logged ' + key + ' in ' + LIMBO_NAME + '.' + catNote, state: s };
+    return { message: 'Logged ' + key + ' in bucket ' + to + '.' + catNote, state: s };
+  }
+
+  function itemMatches(query, state) {
+    const out = [];
+    Object.keys(state.items).forEach(function (k) {
+      const sc = matchScore(query, k);
+      if (sc) out.push({ name: k, bucket: state.items[k], score: sc });
+    });
+    const best = out.reduce(function (m, x) { return Math.max(m, x.score); }, 0);
+    let keep = out.filter(function (x) { return best === 1 ? true : x.score >= 2; });
+    // A plural query like "nails" prefers items that literally say "nails" over "nail gun".
+    const rawQ = normalize(query).split(' ').filter(function (w) { return w && !FILLER[w]; });
+    if (rawQ.some(function (w) { return singular(w) !== w; })) {
+      const literal = keep.filter(function (x) { return containsSeq(normalize(x.name).split(' '), rawQ); });
+      if (literal.length) keep = literal;
+    }
+    keep.sort(function (a, b) { return b.score - a.score || a.name.localeCompare(b.name); });
+    return keep;
+  }
+
+  function itemLine(state, name) { return name + ' — ' + where(state.items[name]); }
+
+  function catBlock(state, cat, skip) {
+    const list = itemsInCategory(state, cat).filter(function (n) { return !skip || !skip[n]; });
+    if (!list.length) return cat + ': nothing in this category yet.';
+    return cat + ' (' + list.length + '):\n' + list.map(function (n) { return '• ' + itemLine(state, n); }).join('\n');
+  }
+
+  // mode: 'item' (find verbs), 'cat' (show/list verbs), 'bare' (just words)
+  function search(query, state, mode) {
+    const q = clean(query);
+    if (!q) return { message: 'Try “where’s the drill” or “show power tools”.', state: state };
+    const items = itemMatches(q, state);
+    const nameCats = categoriesFor(q, state, false);
+    const keyCats = nameCats.length ? nameCats : categoriesFor(q, state, true);
+
+    function itemsText(list) {
+      if (list.length === 1) {
+        const it = list[0];
+        return it.name + ' is in ' + where(it.bucket) + '.' + (it.score === 1 ? ' (closest match)' : '');
+      }
+      return 'Found ' + list.length + ' items:\n' + list.map(function (x) { return '• ' + itemLine(state, x.name); }).join('\n');
+    }
+
+    if (mode === 'item' || (mode === 'bare' && !nameCats.length)) {
+      if (items.length) {
+        let msg = itemsText(items);
+        if (nameCats.length) {
+          const seen = {}; items.forEach(function (x) { seen[x.name] = 1; });
+          const extra = nameCats.map(function (c) { return itemsInCategory(state, c).length ? catBlock(state, c) : ''; }).filter(Boolean);
+          if (extra.length) msg += '\n\nCategory matches:\n' + extra.join('\n\n');
+        }
+        return { message: msg, state: state };
+      }
+      const useCats = mode === 'bare' ? keyCats.filter(function (c) { return itemsInCategory(state, c).length; }) : keyCats;
+      if (useCats.length) {
+        const pre = nameCats.length ? '' : 'Nothing called “' + q + '”, but here’s what’s in ' + useCats.join(' and ') + ':\n\n';
+        return { message: pre + useCats.map(function (c) { return catBlock(state, c); }).join('\n\n'), state: state };
+      }
+      if (mode === 'bare') return { message: HINT, state: state };
+      return { message: 'I couldn’t find “' + q + '” yet. To add it, say “' + q + ' 6” or “' + q + ' limbo”.', state: state };
+    }
+
+    // category-first, unless the words are exactly an item's name and no category is named
+    if (!nameCats.length && items.length && items[0].score === 3) return search(query, state, 'item');
+    if (keyCats.length) {
+      const blocks = keyCats.map(function (c) { return catBlock(state, c); });
+      const inShown = {};
+      keyCats.forEach(function (c) { itemsInCategory(state, c).forEach(function (n) { inShown[n] = 1; }); });
+      const others = items.filter(function (x) { return !inShown[x.name]; });
+      let msg = blocks.join('\n\n');
+      if (others.length) msg += '\n\nOther items matching “' + q + '”:\n' + others.map(function (x) { return '• ' + itemLine(state, x.name); }).join('\n');
+      return { message: msg, state: state };
+    }
+    if (items.length) return { message: itemsText(items), state: state };
+    return { message: 'No items or categories match “' + q + '” yet. Say “categories” to see them all.', state: state };
+  }
+
+  function findItem(query, state) { return search(query, state, 'item'); }
+
+  function setCategory(itemPhrase, catPhrase, state, opts) {
+    const name = clean(itemPhrase);
+    const matches = itemMatches(name, state);
+    let key = existingName(state.items, name);
+    if (!key && matches.length === 1) key = matches[0].name;
+    if (!key) {
+      if (opts && opts.strict) return null;
+      if (matches.length > 1) return { message: 'Which one? ' + matches.map(function (x) { return x.name; }).join(', ') + '.', state: state };
+      return { message: 'I don’t have “' + name + '” yet. Add it first, like “' + name + ' 6”.', state: state };
+    }
+    const r = resolveCategory(catPhrase, state, key);
+    if (!r) return null;
+    const s = clone(state);
+    s.categories[key] = r.cat;
+    let msg = key + ' is now in category ' + r.cat + '.';
+    if (r.created && BUILTIN.indexOf(r.cat) === -1 && s.customCategories.indexOf(r.cat) === -1) {
+      s.customCategories.push(r.cat);
+      msg += ' (New category created.)';
+    }
+    return { message: msg, state: s };
+  }
+
+  function listCategories(state) {
+    const groups = categoryGroups(state);
+    if (!groups.some(function (g) { return g.items.length; })) {
+      return { message: 'No items yet. Categories: ' + allCategories(state).join(', ') + '.', state: state };
+    }
+    const lines = [];
+    groups.forEach(function (g) {
+      if (!g.items.length) return;
+      lines.push(g.name + ' (' + g.items.length + '):');
+      g.items.forEach(function (it) { lines.push('  • ' + it.name + ' — ' + where(it.bucket)); });
+    });
+    return { message: lines.join('\n'), state: state };
+  }
+
+  function categoryGroups(state) {
+    return allCategories(state).map(function (c) {
+      return { name: c, items: itemsInCategory(state, c).map(function (n) { return { name: n, bucket: state.items[n] }; }) };
+    });
+  }
+
+  function reviewBucket(n, state) {
+    const id = String(n);
+    if (id === LIMBO) return reviewLimbo(state);
+    const s = clone(state);
+    const date = today();
+    ensureBucket(s, id).reviewed = date;
+    s.reviews.push({ bucket: id, ts: now().toISOString() });
+    return { message: 'Marked bucket ' + id + ' reviewed on ' + date + '.', state: s };
+  }
+
+  function reviewLimbo(state) {
+    const s = clone(state);
+    const date = today();
+    s.limbo = s.limbo || {};
+    s.limbo.lastReviewed = date;
+    s.reviews.push({ bucket: LIMBO, ts: now().toISOString() });
+    const c = itemsIn(s, LIMBO).length;
+    return { message: 'Marked ' + LIMBO_NAME + ' reviewed on ' + date + '. It has ' + c + ' item' + (c === 1 ? '' : 's') + ' waiting. See you in a month.', state: s };
+  }
+
+  function limboStatus(state) {
+    const last = state.limbo ? state.limbo.lastReviewed : null;
+    const days = daysSince(last);
+    const count = itemsIn(state, LIMBO).length;
+    return { lastReviewed: last || null, days: days, count: count, due: !last || days > LIMBO_DAYS };
+  }
+
+  function nextBucket(state) {
+    const ids = {};
+    Object.keys(state.items).forEach(function (k) { ids[String(state.items[k])] = true; });
+    const candidates = Object.keys(ids).filter(function (id) {
+      const b = state.buckets[id];
+      return id !== LIMBO && !(b && b.retired);
+    });
+    const ls = limboStatus(state);
+    const limboNote = ls.due && ls.count ? ' Also, ' + LIMBO_NAME + ' is due for a review.' : '';
+    if (!candidates.length) return { message: 'No active buckets to review.' + limboNote, state: state };
+    candidates.sort(function (a, b) {
+      const ra = state.buckets[a] && state.buckets[a].reviewed;
+      const rb = state.buckets[b] && state.buckets[b].reviewed;
+      if (!ra && !rb) return Number(a) - Number(b);
+      if (!ra) return -1;
+      if (!rb) return 1;
+      if (ra !== rb) return ra < rb ? -1 : 1;
+      return Number(a) - Number(b);
+    });
+    const id = candidates[0];
+    const reviewed = state.buckets[id] && state.buckets[id].reviewed;
+    const count = itemsIn(state, id).length;
+    const when = reviewed ? 'last reviewed ' + reviewed : 'never reviewed';
+    return { message: 'Next up: bucket ' + id + ' (' + count + ' item' + (count === 1 ? '' : 's') + ', ' + when + ').' + limboNote, state: state };
+  }
+
+  function listBucket(n, state) {
+    const id = String(n);
+    const items = itemsIn(state, id);
+    if (id === LIMBO) {
+      const ls = limboStatus(state);
+      const head = LIMBO_NAME + ' — ' + (ls.lastReviewed ? 'last reviewed ' + ls.lastReviewed : 'never reviewed');
+      if (!items.length) return { message: head + '\n(empty — nice work!)', state: state };
+      return { message: head + '\n' + items.map(function (i) { return '• ' + i; }).join('\n'), state: state };
+    }
+    const b = state.buckets[id];
+    if (!items.length && !b) return { message: 'Bucket ' + id + ' doesn’t exist yet.', state: state };
+    let header = 'Bucket ' + id;
+    if (b && b.retired) header += ' (retired)';
+    header += b && b.reviewed ? ' — last reviewed ' + b.reviewed : ' — never reviewed';
+    if (!items.length) return { message: header + '\n(empty)', state: state };
+    return { message: header + '\n' + items.map(function (i) { return '• ' + i; }).join('\n'), state: state };
+  }
+
+  function allNames(state) {
+    const set = {};
+    Object.keys(state.items).forEach(function (k) { set[k] = true; });
+    state.moves.forEach(function (m) { if (m && m.item) set[m.item] = true; });
+    return Object.keys(set);
+  }
+
+  function itemHistory(query, state) {
+    const q = clean(query);
+    if (!q) return { message: 'Try “drill history”.', state: state };
+    const names = allNames(state);
+    let matches = names.filter(function (k) { return matchScore(q, k) === 3; });
+    if (!matches.length) matches = names.filter(function (k) { return matchScore(q, k) >= 2; });
+    if (!matches.length) matches = names.filter(function (k) { return matchScore(q, k) >= 1; });
+    if (!matches.length) return { message: 'No history for “' + q + '”.', state: state };
+    matches.sort(function (a, b) { return a.localeCompare(b); });
+    const out = [];
+    matches.forEach(function (name) {
+      const trail = state.moves.filter(function (m) { return m && m.item && m.item.toLowerCase() === name.toLowerCase(); });
+      trail.sort(function (a, b) { return a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0; });
+      if (!trail.length) {
+        const loc = state.items[name];
+        out.push(name + ': no moves logged' + (loc ? ' (currently in ' + where(loc) + ')' : ''));
+        return;
+      }
+      if (matches.length > 1) out.push(name + ':');
+      trail.forEach(function (m) {
+        const lbl = function (x) { return x === LIMBO ? 'limbo' : x; };
+        const line = m.from ? formatTs(m.ts) + ' — bucket ' + lbl(m.from) + ' → ' + lbl(m.to) : formatTs(m.ts) + ' — logged in ' + where(m.to);
+        out.push(matches.length > 1 ? '  ' + line : line);
+      });
+    });
+    return { message: out.join('\n'), state: state };
+  }
+
+  function bucketSort(a, b) {
+    if (a === LIMBO) return -1;
+    if (b === LIMBO) return 1;
+    const na = Number(a), nb = Number(b);
+    if (!isNaN(na) && !isNaN(nb)) return na - nb;
+    return String(a).localeCompare(String(b));
+  }
+
+  function listAll(state) {
+    const names = Object.keys(state.items);
+    if (!names.length) return { message: 'Garage is empty. Try “drill 6” or “put the drill in limbo”.', state: state };
+    const byBucket = {};
+    names.forEach(function (n) { const id = String(state.items[n]); (byBucket[id] || (byBucket[id] = [])).push(n); });
+    const lines = [];
+    Object.keys(byBucket).sort(bucketSort).forEach(function (id) {
+      let header;
+      if (id === LIMBO) {
+        header = LIMBO_NAME;
+        if (state.limbo && state.limbo.lastReviewed) header += ', reviewed ' + state.limbo.lastReviewed;
+      } else {
+        const b = state.buckets[id];
+        header = 'Bucket ' + id;
+        if (b && b.retired) header += ' (retired)';
+        if (b && b.reviewed) header += ', reviewed ' + b.reviewed;
+      }
+      lines.push(header + ':');
+      byBucket[id].sort(function (a, c) { return a.localeCompare(c); }).forEach(function (n) { lines.push('  • ' + n + ' (' + categoryOf(state, n) + ')'); });
+    });
+    return { message: lines.join('\n'), state: state };
+  }
+
+  const TARGET = '(\\d+|limbo)';
+  const MOVE_RE = new RegExp('^(?:(?:put|move|moved|place|placed|add|added|stick|store|stored|throw|toss|drop|log|file|stash|return)\\s+)?(.+?)\\s+(?:(?:goes|go|is|are|went|belongs|lives|now)\\s+)?(?:back\\s+)?(?:(?:in|into|inside|to|in to|on|at|over to|under)\\s+)?(?:the\\s+)?(?:(?:bucket|bin|box|tote|number)\\s+)?(?:number\\s+)?' + TARGET + '$');
+
+  function run(raw, state) {
+    state = migrate(state);
+    const t = normalize(raw);
+    if (!t) return { message: '', state: state };
+    let m;
+
+    if (/^(help|help me|commands|what can i (say|do|ask)|what do i say|how does (this|it) work|how do i use (this|it)|instructions|options|menu)$/.test(t)) return { message: HELP, state: state };
+
+    if (/^(list|list all|list everything|list it all|show everything|show all|show it all|show all items|show me everything|everything|show list|inventory|show inventory|list items|list all items|whats in (the )?garage|what is in (the )?garage|what do we have|what have we got)$/.test(t)) return listAll(state);
+
+    if (/^(categories|show categories|list categories|all categories|what categories (are there|do we have)|category list)$/.test(t)) return listCategories(state);
+
+    if (/^(next|whats next|what next|next bucket|review next|next review|next one|what (should|do) (i|we) review( next)?|which bucket (should (i|we) review|is next|next)|what bucket (should (i|we) review|is next|next)|what needs (a )?review(ing)?)$/.test(t)) return nextBucket(state);
+
+    // review limbo
+    if (/^(?:(?:i|we)\s+)?(?:review|reviewed|mark|marked|check|checked|done with|finished)\s+(?:the\s+)?limbo(?:\s+(?:as\s+)?(?:reviewed|done|checked))?$/.test(t) || /^limbo\s+(?:is\s+)?(?:reviewed|done|checked)$/.test(t)) return reviewLimbo(state);
+
+    // review bucket N
+    m = t.match(/^(?:(?:i|we)\s+)?(?:review|reviewed|mark|marked|done with|finished|checked)\s+(?:the\s+)?(?:(?:bucket|bin|box|tote)\s+)?(?:number\s+)?(\d+)(?:\s+(?:as\s+)?(?:reviewed|done|checked))?$/) || t.match(/^(?:bucket|bin|box|tote)\s+(?:number\s+)?(\d+)\s+(?:is\s+)?(?:reviewed|done|checked)$/);
+    if (m) return reviewBucket(m[1], state);
+
+    // show limbo
+    if (/^(?:(?:whats|what is|whats inside|what is inside|show|show me|list|open|check|look in|contents of|what do we have in|whats sitting in)\s+)?(?:the\s+)?(?:in\s+)?limbo$/.test(t)) return listBucket(LIMBO, state);
+
+    // show bucket N
+    m = t.match(/^(?:(?:whats|what is|whats inside|what is inside|show|show me|list|open|check|look in|contents of|what do we have in|whats in)\s+)?(?:in\s+)?(?:the\s+)?(?:bucket|bin|box|tote)\s+(?:number\s+)?(\d+)$/) || t.match(/^(?:whats|what is)\s+in\s+(\d+)$/) || t.match(/^(\d+)$/);
+    if (m) return listBucket(m[1], state);
+
+    // history
+    m = t.match(/^(?:show\s+)?(?:the\s+)?(?:move\s+)?(?:history|trail|moves)\s+(?:of|for|on)?\s*(.+)$/) || t.match(/^(?:show\s+)?(?:where\s+(?:has|have)\s+)(.+?)\s+been$/) || t.match(/^(?:show\s+)?(.+?)\s+(?:history|trail|moves)$/);
+    if (m && clean(m[1])) return itemHistory(m[1], state);
+
+    // find
+    m = t.match(/^(?:where did (?:i|we|you|someone|somebody) (?:put|leave|stick|stash|store)|where do (?:i|we) keep|where can (?:i|we) find|where would (?:i|we) find|do we still have|help me find|we cant find|i cant find|cant find|looking for|search for|have we got|where does|where were|where was|where are|where is|do we have|do i have|is there|look for|look up|find me|wherere|wheres|where do|got any|get me|i need|locate|lookup|search|find|where)\s+(.+?)$/);
+    if (m && clean(m[1])) return search(m[1], state, 'item');
+
+    // category set (before moves would mis-read "x is a y")
+    m = t.match(/^(?:set|change|make)\s+(?:the\s+)?(?:category\s+(?:of|for)\s+)(.+?)\s+(?:to|as|into)\s+(.+)$/) || t.match(/^(?:set|change|make)\s+(?:the\s+)?(.+?)\s+category\s+(?:to|as|into)\s+(.+)$/) || t.match(/^(?:put|move|add|file|place)\s+(.+?)\s+(?:in|into|under|to)\s+(?:the\s+)?(?:category|categories)\s+(.+)$/) || t.match(/^(?:put|move|add|file|place)\s+(.+?)\s+(?:in|into|under|to)\s+(?:the\s+)?(.+?)\s+category$/);
+    if (m && !/^(\d+|limbo)$/.test(m[2].trim())) {
+      const r = setCategory(m[1], m[2], state);
+      if (r) return r;
+    }
+    m = t.match(/^(.+?)\s+category\s+(?:is\s+|to\s+|as\s+)?(.+)$/);
+    if (m && !/^(\d+|limbo)$/.test(m[2].trim())) {
+      const r = setCategory(m[1], m[2], state, { strict: true });
+      if (r) return r;
+    }
+    m = t.match(/^(?:category|categorize|categorise|tag|label)\s+(.+)$/);
+    if (m) {
+      const rest = m[1].replace(/\s+as\s+/, ' ').split(' ');
+      for (let i = rest.length - 1; i >= 1; i--) {
+        const left = rest.slice(0, i).join(' '), right = rest.slice(i).join(' ');
+        if (existingName(state.items, clean(left))) return setCategory(left, right, state);
+      }
+      return search(m[1], state, 'cat');
+    }
+
+    // moves
+    m = t.match(MOVE_RE);
+    if (m && clean(m[1])) return moveItem(clean(m[1]), m[2], state, raw);
+
+    // "drill is a power tool" / "drills are hand tools" / "drill goes under power tools"
+    m = t.match(/^(.+?)\s+(?:is|are|goes under|go under|belongs under|belongs in|counts as)\s+(?:an?\s+|the\s+)?(.+)$/);
+    if (m) {
+      const nm = clean(m[1]);
+      const known = existingName(state.items, nm) || itemMatches(nm, state).length === 1;
+      if (known || categoriesFor(m[2], state, false).length) {
+        const r = setCategory(m[1], m[2], state);
+        if (r) return r;
+      }
+    }
+
+    // category searches
+    m = t.match(/^what\s+(?:kind of\s+|kinds of\s+|sort of\s+|type of\s+)?(.+?)\s+(?:do|have|did)\s+(?:we|i)\s+(?:have|got|own)$/) || t.match(/^(?:show|list|display|give|pull up|get|see)(?:\s+me)?(?:\s+(?:all|every|any))?(?:\s+of)?(?:\s+(?:the|my|our))?\s+(.+)$/) || t.match(/^(?:all|every)\s+(?:the\s+|of the\s+|my\s+|our\s+)?(.+)$/);
+    if (m && clean(m[1])) return search(m[1], state, 'cat');
+
+    // bare words: item name or category name
+    return search(t, state, 'bare');
+  }
+
+  function parseBackup(text) {
+    const s = JSON.parse(text);
+    if (!s || typeof s !== 'object' || Array.isArray(s)) throw new Error('Backup must be a JSON object.');
+    return migrate(s);
+  }
+
+  function bucketList(state) {
+    const counts = {};
+    Object.keys(state.items).forEach(function (k) { const id = String(state.items[k]); counts[id] = (counts[id] || 0) + 1; });
+    const ids = {};
+    for (const id in counts) ids[id] = true;
+    for (const id in state.buckets) ids[id] = true;
+    ids[LIMBO] = true;
+    return Object.keys(ids).sort(bucketSort).map(function (id) {
+      if (id === LIMBO) return { id: id, name: LIMBO_NAME, limbo: true, count: counts[id] || 0, reviewed: (state.limbo && state.limbo.lastReviewed) || null, retired: false };
+      const b = state.buckets[id] || { reviewed: null, retired: false };
+      return { id: id, name: 'Bucket ' + id, limbo: false, count: counts[id] || 0, reviewed: b.reviewed || null, retired: !!b.retired };
+    });
+  }
+
+  function recentMoves(state) {
+    return state.moves.slice().sort(function (a, b) { return a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0; });
+  }
+
+  return { KEY: KEY, LIMBO: LIMBO, LIMBO_NAME: LIMBO_NAME, HELP: HELP, CATEGORIES: CATEGORIES, empty: empty, load: load, save: save, run: run, today: today, setClock: setClock, formatTs: formatTs, parseBackup: parseBackup, migrate: migrate, bucketList: bucketList, recentMoves: recentMoves, itemsIn: itemsIn, normalize: normalize, guessCategory: guessCategory, allCategories: allCategories, categoryGroups: categoryGroups, categoryOf: categoryOf, limboStatus: limboStatus, reviewLimbo: reviewLimbo, where: where };
+})();
+if (typeof globalThis !== 'undefined') globalThis.Garage = Garage;
+
+
+(function initUI() {
+  if (typeof document === 'undefined') return;
+  const $ = function (id) { return document.getElementById(id); };
+  const cmd = $('cmd');
+  const panel = $('panel');
+  const micBtn = $('mic');
+  const backup = $('backup');
+  const backupJson = $('backup-json');
+  const backupStatus = $('backup-status');
+  let tab = 'main';
+  const log = [];
+
+  function setStatus(msg, err) {
+    backupStatus.textContent = msg || '';
+    backupStatus.className = 'status' + (err ? ' err' : '');
+  }
+
+  function renderMain() {
+    if (!log.length) {
+      panel.innerHTML = '<span class="muted">Welcome! Just say or type it the way you’d say it out loud:<br>• <b>put the drill in bucket 6</b><br>• <b>where’s the drill</b><br>• <b>show power tools</b><br>• <b>put the drill in limbo</b> (The Limbo Bin is for stuff waiting to be put away)<br>Say <b>help</b> for more.</span>';
+      return;
+    }
+    panel.innerHTML = '';
+    for (let i = log.length - 1; i >= 0; i--) {
+      const e = log[i];
+      const div = document.createElement('div');
+      div.className = 'entry';
+      const c = document.createElement('div');
+      c.className = 'cmd';
+      c.textContent = '› ' + e.input;
+      const o = document.createElement('div');
+      o.textContent = e.output;
+      div.appendChild(c);
+      div.appendChild(o);
+      panel.appendChild(div);
+    }
+    panel.scrollTop = 0;
+  }
+
+  function renderBuckets() {
+    const state = Garage.load();
+    const list = Garage.bucketList(state);
+    panel.innerHTML = '';
+    for (let i = 0; i < list.length; i++) {
+      const b = list[i];
+      const row = document.createElement('div');
+      row.className = 'row' + (b.limbo ? ' limbo' : '');
+      const left = document.createElement('div');
+      left.textContent = b.name + (b.retired ? ' (retired)' : '');
+      const right = document.createElement('div');
+      right.className = 'count';
+      const n = b.count + ' item' + (b.count === 1 ? '' : 's');
+      right.textContent = n + ' · ' + (b.reviewed ? 'reviewed ' + b.reviewed : 'never reviewed');
+      row.appendChild(left);
+      row.appendChild(right);
+      row.style.cursor = 'pointer';
+      row.addEventListener('click', (function (id) { return function () { runCommand(id === Garage.LIMBO ? 'what is in limbo' : 'bucket ' + id); }; })(b.id));
+      panel.appendChild(row);
+    }
+    if (list.length === 1) {
+      const tip = document.createElement('div');
+      tip.className = 'muted';
+      tip.style.marginTop = '0.6rem';
+      tip.textContent = 'No numbered buckets yet. Try “put the drill in bucket 6”.';
+      panel.appendChild(tip);
+    }
+  }
+
+  function renderCategories() {
+    const state = Garage.load();
+    const groups = Garage.categoryGroups(state).filter(function (g) { return g.items.length; });
+    if (!groups.length) {
+      panel.innerHTML = '<span class="muted">No items yet. Items get a category automatically (like Power Tools or Fasteners). Change one by saying “drill is a power tool”, or make your own: “sled is winter gear”.</span>';
+      return;
+    }
+    panel.innerHTML = '';
+    for (let i = 0; i < groups.length; i++) {
+      const g = groups[i];
+      const h = document.createElement('div');
+      h.className = 'cat-head';
+      h.textContent = g.name + ' (' + g.items.length + ')';
+      panel.appendChild(h);
+      for (let j = 0; j < g.items.length; j++) {
+        const row = document.createElement('div');
+        row.className = 'row';
+        const left = document.createElement('div');
+        left.textContent = g.items[j].name;
+        const right = document.createElement('div');
+        right.className = 'count';
+        right.textContent = Garage.where(g.items[j].bucket);
+        row.appendChild(left);
+        row.appendChild(right);
+        panel.appendChild(row);
+      }
+    }
+  }
+
+  function renderBanner() {
+    const st = Garage.limboStatus(Garage.load());
+    const el = $('limbo-banner');
+    el.classList.toggle('show', st.due);
+    if (st.due) {
+      $('limbo-info').textContent = st.count + ' item' + (st.count === 1 ? '' : 's') + ' waiting · ' + (st.lastReviewed ? 'last reviewed ' + st.lastReviewed : 'never reviewed');
+    }
+  }
+
+  function renderHistory() {
+    const state = Garage.load();
+    const moves = Garage.recentMoves(state);
+    if (!moves.length) {
+      panel.innerHTML = '<span class="muted">No moves yet.</span>';
+      return;
+    }
+    panel.innerHTML = '';
+    for (let i = 0; i < moves.length; i++) {
+      const m = moves[i];
+      const row = document.createElement('div');
+      row.className = 'row';
+      const left = document.createElement('div');
+      left.textContent = m.from ? (m.item + ' · ' + m.from + ' → ' + m.to) : (m.item + ' · logged in ' + m.to);
+      const right = document.createElement('div');
+      right.className = 'count';
+      right.textContent = Garage.formatTs(m.ts);
+      row.appendChild(left);
+      row.appendChild(right);
+      panel.appendChild(row);
+    }
+  }
+
+  function render() {
+    renderBanner();
+    if (tab === 'buckets') renderBuckets();
+    else if (tab === 'categories') renderCategories();
+    else if (tab === 'history') renderHistory();
+    else renderMain();
+  }
+
+  function setTab(next) {
+    tab = next;
+    const buttons = document.querySelectorAll('.tabs button');
+    for (let i = 0; i < buttons.length; i++) buttons[i].classList.toggle('active', buttons[i].getAttribute('data-tab') === tab);
+    render();
+  }
+
+  function runCommand(text) {
+    const input = String(text || '').trim();
+    if (!input) return;
+    const result = Garage.run(input, Garage.load());
+    Garage.save(result.state);
+    if (result.message) {
+      log.push({ input: input, output: result.message });
+      if (log.length > 30) log.shift();
+    }
+    cmd.value = '';
+    setTab('main');
+  }
+
+  $('limbo-done').addEventListener('click', function () {
+    const r = Garage.reviewLimbo(Garage.load());
+    Garage.save(r.state);
+    log.push({ input: 'Reviewed The Limbo Bin', output: r.message });
+    if (log.length > 30) log.shift();
+    setTab('main');
+  });
+
+  document.getElementById('form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    runCommand(cmd.value);
+  });
+
+  const tabs = document.querySelectorAll('.tabs button');
+  for (let i = 0; i < tabs.length; i++) {
+    tabs[i].addEventListener('click', function () { setTab(this.getAttribute('data-tab')); });
+  }
+
+  function openBackup(text) {
+    backup.classList.add('open');
+    backupJson.value = text || '';
+    setStatus('');
+  }
+
+  $('btn-export').addEventListener('click', function () {
+    const text = JSON.stringify(Garage.load(), null, 2);
+    openBackup(text);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { setStatus('Copied backup JSON to the clipboard.'); }, function () { setStatus('Copy the JSON below to share this garage.'); });
+    } else {
+      backupJson.focus();
+      backupJson.select();
+      setStatus('Copy the JSON below to share this garage.');
+    }
+  });
+
+  $('btn-import').addEventListener('click', function () {
+    openBackup('');
+    backupJson.focus();
+    setStatus('Paste a backup JSON, then tap Paste & import.');
+  });
+
+  $('btn-copy').addEventListener('click', function () {
+    backupJson.focus();
+    backupJson.select();
+    const text = backupJson.value;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { setStatus('Copied.'); }, function () { setStatus('Select the text and copy it.'); });
+    } else if (document.execCommand) {
+      document.execCommand('copy');
+      setStatus('Copied.');
+    }
+  });
+
+  $('btn-apply').addEventListener('click', function () {
+    try {
+      const next = Garage.parseBackup(backupJson.value);
+      if (!window.confirm('Replace all garage data on this phone with this backup?')) return;
+      Garage.save(next);
+      log.length = 0;
+      log.push({ input: 'import', output: 'Imported backup. ' + Object.keys(next.items).length + ' item(s), ' + next.moves.length + ' move(s).' });
+      setStatus('Imported.');
+      setTab('main');
+    } catch (err) {
+      setStatus('Could not import: ' + (err && err.message ? err.message : 'invalid JSON'), true);
+    }
+  });
+
+  $('btn-close').addEventListener('click', function () {
+    backup.classList.remove('open');
+    setStatus('');
+  });
+
+  function voiceStatus(m){ var el=document.getElementById('voice-status'); el.textContent=m||''; el.style.color=m&&/blocked|error|not work|No microphone|Could not|needs/.test(m)?'#e06c75':''; }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    micBtn.addEventListener('click', function () { voiceStatus('Voice input does not work in this browser. Open the page in Chrome, or type the command.'); });
+    micBtn.style.opacity = '0.4';
+    micBtn.title = 'Voice input is not supported in this browser';
+  } else {
+    let rec = null;
+    let listening = false;
+    function stop() {
+      listening = false;
+      micBtn.classList.remove('listening');
+      micBtn.textContent = 'Mic';
+      if (rec) try { rec.stop(); } catch (e) {}
+    }
+    micBtn.addEventListener('click', function () {
+      if (listening) { stop(); return; }
+      rec = new SR();
+      rec.lang = 'en-US';
+      rec.interimResults = false;
+      rec.maxAlternatives = 1;
+      rec.onresult = function (e) {
+        const text = e.results && e.results[0] && e.results[0][0] ? e.results[0][0].transcript : '';
+        stop();
+        voiceStatus('');
+        if (text) {
+          cmd.value = text;
+          runCommand(text);
+        }
+      };
+      rec.onerror = function (e) {
+        stop();
+        var code = e && e.error;
+        var msg = {
+          'not-allowed': 'Microphone is blocked. Tap the icon left of the web address, choose Permissions, and allow Microphone, then try again.',
+          'service-not-allowed': 'Voice input is turned off in this browser. Open the page in Chrome and allow the microphone.',
+          'no-speech': 'Did not hear anything. Tap Mic and start talking right away.',
+          'audio-capture': 'No microphone found. Check that another app is not using it.',
+          'network': 'Voice input needs an internet connection. Try again with Wi-Fi or data on.'
+        }[code] || ('Voice input error: ' + (code || 'unknown') + '. You can type the command instead.');
+        voiceStatus(msg);
+      };
+      rec.onstart = function () { voiceStatus('Listening... say something like "put the drill in bucket 6" or "where is the drill".'); };
+      rec.onend = function () { if (listening) { stop(); voiceStatus('Did not catch that. Tap Mic and try again.'); } };
+      listening = true;
+      micBtn.classList.add('listening');
+      micBtn.textContent = 'Stop';
+      try { rec.start(); } catch (e) { stop(); voiceStatus('Could not start the microphone: ' + e.message); }
+    });
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>
