@@ -847,7 +847,7 @@ const Garage = (() => {
   }
   function micBlockedSteps(ua) {
     if (isIOS(ua)) return 'The microphone is blocked. Tap aA in the address bar, then Website Settings, then Microphone, then Allow, then reload.';
-    return 'Microphone is blocked.\n\n1. Tap the web address at the top. A small sliders icon appears at its left, so tap it. Then Permissions, then Microphone, then Allow, then reload.\n\n2. Don\'t see it? Tap ⋮ (top right), then Settings, then Site settings, then Microphone, find hhoskins8.github.io, and set it to Allow.';
+    return 'Microphone is blocked.\n\n1. Tap ⋮ (top right), then Settings.\n2. Tap Site settings, then Microphone.\n3. Make sure Microphone is turned on. If hhoskins8.github.io is under Blocked, tap it and choose Allow.\n4. Come back here and reload the page.';
   }
   function voiceErrorMessage(code, ua) {
     var c = String(code || '');
